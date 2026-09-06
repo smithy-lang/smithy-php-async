@@ -13,33 +13,30 @@ namespace Smithy\Async;
 interface EventLoopInterface
 {
     /**
-     * Run multiple callables concurrently, each in its own fiber.
-     * Blocks the caller until all callables have completed.
+     * Run callbacks concurrently in separate fibers.
      *
-     * @param array<callable(): mixed> $callbacks
-     * @return array<mixed> Results in the same order as the input callables.
+     * Block until every callback completes.
      *
-     * @throws \Throwable If any callable throws, its exception propagates.
+     * @param array<array-key, callable(): mixed> $callbacks
+     *
+     * @return list<mixed> Results in input order.
+     * @throws \Throwable When a callback fails.
      */
     public function run(array $callbacks): array;
 
     /**
-     * Suspend the current fiber until the event loop resumes it.
-     * This is called internally by async-capable HTTP handlers
-     * when waiting on I/O.
+     * Suspend the current fiber until resumed.
      *
-     * @param \Closure $onSuspend Receives two callbacks:
-     *                 - resume(mixed $value): Resume the fiber with a value.
-     *                 - throw(\Throwable $e): Resume the fiber by throwing.
-     * @return mixed The value passed to resume().
+     * @param \Closure(callable(mixed=): void, callable(\Throwable): void): void $onSuspend
+     *
+     * @return mixed Value passed to the resume callback.
      */
     public function suspend(\Closure $onSuspend): mixed;
 
     /**
-     * Delay the current flow for the given number of seconds.
+     * Delay the current flow.
      *
-     * Implementations should suspend using the underlying event loop
-     * rather than busy-waiting or sleeping the process.
+     * Suspend through the event loop rather than blocking the process.
      *
      * @return void
      */

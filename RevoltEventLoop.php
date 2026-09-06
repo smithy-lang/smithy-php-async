@@ -7,31 +7,15 @@ namespace Smithy\Async;
 use Revolt\EventLoop as Revolt;
 
 /**
- * Event loop adapter backed by Revolt.
- *
- * Provides fiber suspension, timers, deferred callbacks, and callback group
- * execution for async-capable Smithy clients.
- *
- * Install via: composer require revolt/event-loop
+ * Adapt event-loop operations to Revolt.
  */
 final class RevoltEventLoop implements EventLoopInterface
 {
-    public function __construct()
-    {
-        if (!class_exists(Revolt::class)) {
-            throw new \RuntimeException(
-                'Revolt event loop is not installed. '
-                . 'Run "composer require revolt/event-loop" to enable '
-                . 'async support.'
-            );
-        }
-    }
-
     /** @inheritDoc */
     public function run(array $callbacks): array
     {
         $states = [];
-        $pending = count($callbacks);
+        $pending = \count($callbacks);
 
         if ($pending === 0) {
             return [];
@@ -85,10 +69,10 @@ final class RevoltEventLoop implements EventLoopInterface
         }
 
         if ($exceptions !== []) {
-            throw reset($exceptions);
+            throw \reset($exceptions);
         }
 
-        return array_values($results);
+        return \array_values($results);
     }
 
     /** @inheritDoc */

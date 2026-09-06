@@ -13,25 +13,21 @@ namespace Smithy\Async;
  */
 final class Async
 {
-    /** @var ?EventLoopInterface Globally configured event loop. */
     private static ?EventLoopInterface $eventLoop = null;
 
     private function __construct() {}
 
     /**
-     * Run multiple callables concurrently, each in its own fiber.
-     * Blocks the caller until all callables have completed.
-     * Results are returned in the same order as the input.
+     * Run callables concurrently in separate fibers.
      *
-     * Each callable receives its own fiber. Work cooperates when it calls
-     * Async::delay() or a transport/runtime component suspends through the
-     * configured event loop.
+     * Block until every callable completes and return results in input order.
+     * Work cooperates when a callable invokes {@see self::delay()} or another
+     * component suspends through the configured event loop.
      *
      * @param callable(): mixed ...$operations
-     * @return array<mixed> Results in input order.
      *
-     * @throws \RuntimeException If no event loop is available.
-     * @throws \Throwable Re-throws the first exception from any operation.
+     * @return list<mixed> Results in input order.
+     * @throws \Throwable When an operation fails.
      */
     public static function all(callable ...$operations): array
     {
@@ -39,11 +35,7 @@ final class Async
     }
 
     /**
-     * Apply a callable to each item in an iterable with bounded
-     * concurrency. At most $concurrency operations run simultaneously.
-     *
-     * Use this to process a large set of operations without overwhelming
-     * connections or hitting API throttling limits.
+     * Apply a callable to iterable items with bounded concurrency.
      *
      * @template TKey
      * @template TValue
@@ -53,10 +45,9 @@ final class Async
      * @param callable(TValue, TKey): TResult $fn Callable applied to each item.
      * @param int $concurrency Maximum concurrent operations. Defaults to 25.
      *
-     * @return array<TResult> Results in the same order as the input.
-     *
-     * @throws \RuntimeException If no event loop is available.
-     * @throws \Throwable Re-throws the first exception from any operation.
+     * @return list<TResult> Results in input order.
+     * @throws \InvalidArgumentException When concurrency is less than one.
+     * @throws \Throwable When item processing fails.
      */
     public static function map(
         iterable $items,
@@ -70,47 +61,38 @@ final class Async
             );
         }
 
+        if ($items === []) {
+            return [];
+        }
+
         $loop = self::resolveEventLoop();
         $itemReader = self::createItemReader($loop, self::iterate($items));
+        $results = [];
         $workers = [];
 
         for ($i = 0; $i < $concurrency; $i++) {
             $workers[] = static function () use (
                 $fn,
-                $itemReader
-            ): array {
-                $workerResults = [];
-
+                $itemReader,
+                &$results
+            ): void {
                 while (($item = $itemReader()) !== null) {
                     [$index, $key, $value] = $item;
-                    $result = $fn($value, $key);
-                    $workerResults[] = [$index, $result];
+                    $results[$index] = $fn($value, $key);
                 }
-
-                return $workerResults;
             };
         }
 
-        $workerResults = $loop->run($workers);
-        $results = [];
-        foreach ($workerResults as $workerResult) {
-            foreach ($workerResult as [$index, $result]) {
-                $results[$index] = $result;
-            }
-        }
+        $loop->run($workers);
+        \ksort($results);
 
-        ksort($results);
-
-        return array_values($results);
+        return \array_values($results);
     }
 
     /**
      * Configure the global event loop.
      *
-     * Customers who want to use a custom event loop implementation
-     * call this before making any async SDK calls.
-     *
-     * If never called, Async auto-discovers Revolt.
+     * Use {@see RevoltEventLoop} when no custom loop is configured.
      *
      * @return void
      */
@@ -135,12 +117,6 @@ final class Async
         self::resolveEventLoop()->delay($seconds);
     }
 
-    /**
-     * Resolve the event loop.
-     *
-     * Returns the configured loop, or creates a RevoltEventLoop
-     * on first call.
-     */
     private static function resolveEventLoop(): EventLoopInterface
     {
         return self::$eventLoop ??= new RevoltEventLoop();
