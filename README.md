@@ -61,6 +61,10 @@ immediately for zero or negative delays.
 This package contains scheduling and concurrency primitives. HTTP transfer
 cancellation belongs to `smithy/http`.
 
+## Design
+
+See [Async Runtime and HTTP Concurrency](../../docs/design/async/async-runtime-and-http-concurrency.md).
+
 ## Contributing
 
 Run the component tests from the monorepo root:
