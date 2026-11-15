@@ -36,7 +36,7 @@ final class Async
      */
     public static function all(callable ...$operations): array
     {
-        return self::resolveEventLoop()->run($operations);
+        return self::eventLoop()->run($operations);
     }
 
     /**
@@ -66,29 +66,36 @@ final class Async
             );
         }
 
-        if ($items === []) {
-            return [];
+        if (\is_array($items) || $items instanceof \Countable) {
+            $count = \count($items);
+            if ($count === 0) {
+                return [];
+            }
+
+            // Extra workers would only start a fiber and exit.
+            $concurrency = \min($concurrency, $count);
         }
 
-        $loop = self::resolveEventLoop();
+        $loop = self::eventLoop();
+
+        if (\is_array($items)) {
+            return self::mapArray($loop, $items, $fn, $concurrency);
+        }
+
         $itemReader = self::createItemReader($loop, self::iterate($items));
         $results = [];
-        $workers = [];
+        $worker = static function () use (
+            $fn,
+            $itemReader,
+            &$results
+        ): void {
+            while (($item = $itemReader()) !== null) {
+                [$index, $key, $value] = $item;
+                $results[$index] = $fn($value, $key);
+            }
+        };
 
-        for ($i = 0; $i < $concurrency; $i++) {
-            $workers[] = static function () use (
-                $fn,
-                $itemReader,
-                &$results
-            ): void {
-                while (($item = $itemReader()) !== null) {
-                    [$index, $key, $value] = $item;
-                    $results[$index] = $fn($value, $key);
-                }
-            };
-        }
-
-        $loop->run($workers);
+        $loop->run(\array_fill(0, $concurrency, $worker));
         \ksort($results);
 
         return \array_values($results);
@@ -119,12 +126,62 @@ final class Async
             return;
         }
 
-        self::resolveEventLoop()->delay($seconds);
+        self::eventLoop()->delay($seconds);
     }
 
-    private static function resolveEventLoop(): EventLoopInterface
+    /**
+     * Resolve the global event loop.
+     *
+     * Use {@see RevoltEventLoop} when no custom loop is configured.
+     */
+    public static function eventLoop(): EventLoopInterface
     {
         return self::$eventLoop ??= new RevoltEventLoop();
+    }
+
+    /**
+     * Map a non-empty array without the iterator lock.
+     *
+     * Array reads cannot suspend, so workers share a plain index.
+     *
+     * @template TKey of array-key
+     * @template TValue
+     * @template TResult
+     *
+     * @param non-empty-array<TKey, TValue> $items
+     * @param callable(TValue, TKey): TResult $fn
+     * @param positive-int $concurrency At most the item count.
+     *
+     * @return list<TResult> Results in input order.
+     */
+    private static function mapArray(
+        EventLoopInterface $loop,
+        array $items,
+        callable $fn,
+        int $concurrency
+    ): array
+    {
+        $keys = \array_keys($items);
+        $count = \count($keys);
+        $results = \array_fill(0, $count, null);
+        $next = 0;
+        $worker = static function () use (
+            $items,
+            $keys,
+            $count,
+            $fn,
+            &$next,
+            &$results
+        ): void {
+            while (($i = $next++) < $count) {
+                $key = $keys[$i];
+                $results[$i] = $fn($items[$key], $key);
+            }
+        };
+
+        $loop->run(\array_fill(0, $concurrency, $worker));
+
+        return $results;
     }
 
     /**

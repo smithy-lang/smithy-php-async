@@ -32,7 +32,7 @@ interface EventLoopInterface
     /**
      * Suspend the current fiber until resumed.
      *
-     * @param \Closure(callable(mixed=): void, callable(\Throwable): void): void $onSuspend
+     * @param \Closure(\Closure(mixed=): void, \Closure(\Throwable): void): void $onSuspend
      *
      * @return mixed Value passed to the resume callback.
      */

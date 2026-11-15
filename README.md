@@ -43,7 +43,8 @@ operation or call `Async::delay()`.
 
 `RevoltEventLoop` supplies the default implementation. Call
 `Async::configure()` to install another `EventLoopInterface` implementation
-before starting concurrent work.
+before starting concurrent work or creating HTTP clients. `Async::eventLoop()`
+returns the configured loop, and HTTP clients use it when none is passed.
 
 ```php
 use Smithy\Async\Async;

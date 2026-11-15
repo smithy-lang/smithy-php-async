@@ -19,7 +19,6 @@ final class RevoltEventLoop implements EventLoopInterface
     /** @inheritDoc */
     public function run(array $callbacks): array
     {
-        $states = [];
         $pending = \count($callbacks);
 
         if ($pending === 0) {
@@ -27,54 +26,42 @@ final class RevoltEventLoop implements EventLoopInterface
         }
 
         $suspension = Revolt::getSuspension();
+        $results = [];
+        $errors = [];
 
         foreach ($callbacks as $index => $callback) {
-            $state = new \stdClass();
-            $state->result = null;
-            $state->exception = null;
-            // Keep the fiber on state for future cancellation or introspection.
-            $state->fiber = null;
-            $states[$index] = $state;
-            $fiber = new \Fiber(function () use (
+            // Seed the slot so results keep input order.
+            $results[$index] = null;
+            $fiber = new \Fiber(static function () use (
                 $callback,
-                $state,
+                $index,
+                &$results,
+                &$errors,
                 &$pending,
                 $suspension
             ): void {
                 try {
-                    $result = $callback();
-                    $state->result = $result;
+                    $results[$index] = $callback();
                 } catch (\Throwable $e) {
-                    $state->exception = $e;
+                    $errors[$index] = $e;
                 } finally {
-                    $state->fiber = null;
                     if (--$pending === 0) {
                         $suspension->resume();
                     }
                 }
             });
-            $state->fiber = $fiber;
-            Revolt::queue(
-                static function () use ($fiber): void {
-                    $fiber->start();
-                }
-            );
+            Revolt::queue($fiber->start(...));
         }
 
         $suspension->suspend();
 
-        $results = [];
-        $exceptions = [];
-        foreach ($states as $index => $state) {
-            if ($state->exception !== null) {
-                $exceptions[$index] = $state->exception;
-            } else {
-                $results[$index] = $state->result;
+        if ($errors !== []) {
+            // Throw the first failure in input order, not completion order.
+            foreach ($callbacks as $index => $_) {
+                if (isset($errors[$index])) {
+                    throw $errors[$index];
+                }
             }
-        }
-
-        if ($exceptions !== []) {
-            throw \reset($exceptions);
         }
 
         return \array_values($results);
@@ -140,12 +127,7 @@ final class RevoltEventLoop implements EventLoopInterface
         callable $callback
     ): string
     {
-        return Revolt::delay(
-            \max(0.0, $seconds),
-            static function () use ($callback): void {
-                $callback();
-            }
-        );
+        return Revolt::delay(\max(0.0, $seconds), self::toClosure($callback));
     }
 
     /** @inheritDoc */
@@ -157,8 +139,21 @@ final class RevoltEventLoop implements EventLoopInterface
     /** @inheritDoc */
     public function defer(callable $callback): void
     {
-        Revolt::defer(static function () use ($callback): void {
+        Revolt::defer(self::toClosure($callback));
+    }
+
+    /**
+     * Adapt a callback for Revolt so it runs with no arguments.
+     *
+     * Revolt passes the callback ID as an argument. The wrapper drops it,
+     * so typed, variadic and func_get_args() callbacks and internal
+     * functions never see it. One closure costs about the same as the
+     * reflection a pass-through check would need.
+     */
+    private static function toClosure(callable $callback): \Closure
+    {
+        return static function () use ($callback): void {
             $callback();
-        });
+        };
     }
 }
