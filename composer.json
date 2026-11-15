@@ -1,0 +1,15 @@
+{
+    "name": "smithy/async",
+    "description": "Fiber-based concurrency helpers and an event-loop contract for Smithy PHP clients.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": ">=8.2",
+        "revolt/event-loop": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Smithy\\Async\\": ""
+        }
+    }
+}
