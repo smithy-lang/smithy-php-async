@@ -64,7 +64,7 @@ cancellation belongs to `smithy/http`.
 
 ## Design
 
-See [Async Runtime and HTTP Concurrency](../../docs/design/async/async-runtime-and-http-concurrency.md).
+See [Async Runtime and HTTP Concurrency](https://github.com/smithy-lang/smithy-php/blob/main/docs/design/async/async-runtime-and-http-concurrency.md).
 
 ## Contributing
 
