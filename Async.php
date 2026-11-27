@@ -148,7 +148,7 @@ final class Async
      * @template TValue
      * @template TResult
      *
-     * @param non-empty-array<TKey, TValue> $items
+     * @param array<TKey, TValue> $items
      * @param callable(TValue, TKey): TResult $fn
      * @param positive-int $concurrency At most the item count.
      *
@@ -163,7 +163,7 @@ final class Async
     {
         $keys = \array_keys($items);
         $count = \count($keys);
-        $results = \array_fill(0, $count, null);
+        $results = [];
         $next = 0;
         $worker = static function () use (
             $items,
@@ -180,8 +180,10 @@ final class Async
         };
 
         $loop->run(\array_fill(0, $concurrency, $worker));
+        // Workers finish out of order; sort by input position.
+        \ksort($results);
 
-        return $results;
+        return \array_values($results);
     }
 
     /**
